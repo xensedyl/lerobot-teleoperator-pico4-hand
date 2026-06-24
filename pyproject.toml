@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61", "setuptools-scm[toml]>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot_teleoperator_pico4_hand"
+dynamic = ["version"]
+description = "Pico4 hand-tracking teleoperator integration with LeRobot"
+readme = "README.md"
+authors = [
+  { name = "XenseRobotics" },
+]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy",
+  "dex_retargeting @ git+ssh://git@github.com/xensedyl/dex-retargeting.git",
+]
+
+[project.scripts]
+lerobot-teleoperate-pico4-hand = "lerobot_teleoperator_pico4_hand.scripts.teleoperate_pico4_hand:main"
+lerobot-record-pico4-hand = "lerobot_teleoperator_pico4_hand.scripts.record_pico4_hand:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lerobot_teleoperator_pico4_hand", "lerobot_teleoperator_pico4_hand.*"]
+exclude = ["*.egg-info"]
+
+[tool.setuptools_scm]
+tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+fallback_version = "0.0.0"
