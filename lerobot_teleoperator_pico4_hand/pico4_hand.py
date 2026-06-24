@@ -66,7 +66,7 @@ import numpy as np
 
 from lerobot.teleoperators.teleoperator import Teleoperator
 from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
-from lerobot.utils.robot_utils import (
+from .utils import (
     get_logger,
     normalize_quaternion,
     quaternion_to_rotation_6d,

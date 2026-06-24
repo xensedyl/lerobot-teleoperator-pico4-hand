@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import traceback
 from pathlib import Path
 
@@ -115,12 +116,35 @@ def normalize_robot_name(robot_name: str) -> str:
 
 
 def infer_robot_urdf_dir(config_path: Path) -> Path:
+    candidates: list[Path] = []
+
     for parent in config_path.resolve().parents:
-        candidate = parent / "assets" / "robots" / "hands"
+        candidates.append(parent / "assets" / "robots" / "hands")
+        candidates.append(parent.parent / "assets" / "robots" / "hands")
+
+    for env_name in ("DEX_RETARGETING_DIR", "DEX_RETARGETING_ROOT"):
+        env_value = os.environ.get(env_name)
+        if env_value:
+            root = Path(env_value).expanduser()
+            candidates.append(root / "assets" / "robots" / "hands")
+            candidates.append(root)
+
+    package_root = Path(__file__).resolve()
+    for parent in package_root.parents:
+        candidates.append(parent / "dex-retargeting" / "assets" / "robots" / "hands")
+        candidates.append(parent.parent / "dex-retargeting" / "assets" / "robots" / "hands")
+
+    cwd = Path.cwd().resolve()
+    for parent in (cwd, *cwd.parents):
+        candidates.append(parent / "dex-retargeting" / "assets" / "robots" / "hands")
+
+    for candidate in candidates:
         if candidate.exists():
             return candidate
+
     raise FileNotFoundError(
-        "Could not infer dex-retargeting robot URDF directory. Set teleop.robot_urdf_dir explicitly."
+        "Could not infer dex-retargeting robot URDF directory. "
+        "Set teleop.robot_urdf_dir explicitly or set DEX_RETARGETING_DIR."
     )
 
 
