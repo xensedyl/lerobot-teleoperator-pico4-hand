@@ -54,6 +54,7 @@ For Revo2 this class has a built-in mapping.  For future hands, pass
 """
 
 import time
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -135,6 +136,85 @@ _REVO2_ACTION_KEYS = {
 }
 
 _RETARGETING_WORKER_PATH = Path(__file__).resolve().parent / "pico4_hand_retargeting_worker.py"
+_PXREA_ROBOT_SDK_HANDLE = None
+
+
+def _candidate_pxrea_robot_sdk_paths() -> list[Path]:
+    lib_name = "libPXREARobotSDK.so"
+    candidates: list[Path] = []
+
+    for env_name in ("PXREA_ROBOT_SDK_LIB", "XENSEVR_PXREA_SDK_LIB"):
+        env_value = os.environ.get(env_name)
+        if env_value:
+            candidates.append(Path(env_value).expanduser())
+
+    for env_name in ("XENSEVR_SDK_ROOT", "XENSE_PICO_TELEOP_INTERFACE", "XENSE_PICO_INTERFACE_ROOT"):
+        env_value = os.environ.get(env_name)
+        if env_value:
+            root = Path(env_value).expanduser()
+            candidates.extend(
+                [
+                    root / "xensevr-pc-service-pybind" / "lib" / lib_name,
+                    root / "RoboticsService" / "PXREARobotSDK" / "build" / lib_name,
+                    root / "RoboticsService" / "SDK" / "linux" / "64" / lib_name,
+                ]
+            )
+
+    candidates.append(Path(sys.prefix) / "lib" / lib_name)
+
+    here = Path(__file__).resolve()
+    for root in here.parents:
+        candidates.extend(
+            [
+                root / "xensevr-pc-service-pybind" / "lib" / lib_name,
+                root / "Xense-Pico-Teleop-Interface" / "xensevr-pc-service-pybind" / "lib" / lib_name,
+                root
+                / "Xense-Pico-Teleop-Interface"
+                / "xensevr-pc-service-pybind"
+                / "dependencies"
+                / "XenseVR-PC-Service"
+                / "RoboticsService"
+                / "PXREARobotSDK"
+                / "build"
+                / lib_name,
+                root
+                / "franka_hand"
+                / "Xense-Pico-Teleop-Interface"
+                / "xensevr-pc-service-pybind"
+                / "lib"
+                / lib_name,
+                root
+                / "third_party"
+                / "XenseVR-PC-Service"
+                / "RoboticsService"
+                / "PXREARobotSDK"
+                / "build"
+                / lib_name,
+            ]
+        )
+
+    seen: set[Path] = set()
+    deduped: list[Path] = []
+    for candidate in candidates:
+        candidate = candidate.resolve() if candidate.exists() else candidate
+        if candidate not in seen:
+            seen.add(candidate)
+            deduped.append(candidate)
+    return deduped
+
+
+def _preload_pxrea_robot_sdk() -> Path | None:
+    global _PXREA_ROBOT_SDK_HANDLE
+
+    if _PXREA_ROBOT_SDK_HANDLE is not None:
+        return None
+
+    for candidate in _candidate_pxrea_robot_sdk_paths():
+        if not candidate.is_file():
+            continue
+        _PXREA_ROBOT_SDK_HANDLE = ctypes.CDLL(str(candidate), mode=ctypes.RTLD_GLOBAL)
+        return candidate
+    return None
 
 
 class Pico4Hand(Teleoperator):
@@ -322,12 +402,18 @@ class Pico4Hand(Teleoperator):
             raise DeviceAlreadyConnectedError(f"{self} already connected")
 
         self.logger.info("Connecting to Pico4 VR headset...")
+        pxrea_sdk_path = None
         try:
+            pxrea_sdk_path = _preload_pxrea_robot_sdk()
             import xensevr_pc_service_sdk as xrt
         except ImportError as e:
+            details = ""
+            if pxrea_sdk_path is not None:
+                details = f" Loaded libPXREARobotSDK.so from {pxrea_sdk_path}, but import still failed."
             raise ImportError(
                 "xensevr_pc_service_sdk is required for Pico4 teleoperator. "
                 "Please install it according to your Pico4 SDK documentation."
+                f"{details}"
             ) from e
 
         self._start_retargeting_worker()
@@ -1045,6 +1131,8 @@ class Pico4Hand(Teleoperator):
         # Step 2: Handle tracking loss — hold last hand action, keep TCP target.
         if not tracking_usable:
             hand_action = self._handle_tracking_loss(active, hand_state)
+            if self.config.hand_only:
+                return hand_action
             return {**self._current_tcp_action(), **hand_action}
 
         # Step 3: Arm TCP control from palm pose (hand_state[0]) unless this is

@@ -12,15 +12,16 @@ from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraCon
 from lerobot.configs import parser
 from lerobot.datasets.image_writer import safe_stop_image_writer
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from lerobot.datasets.pipeline_features import aggregate_pipeline_dataset_features, create_initial_features
-from lerobot.datasets.utils import build_dataset_frame, combine_feature_dicts
+try:
+    from lerobot.datasets.pipeline_features import aggregate_pipeline_dataset_features, create_initial_features
+except ModuleNotFoundError as exc:
+    if exc.name not in {"lerobot.datasets.pipeline_features", "lerobot.processor"}:
+        raise
+    aggregate_pipeline_dataset_features = None
+    create_initial_features = None
+
+from lerobot.datasets.utils import build_dataset_frame, combine_feature_dicts, hw_to_dataset_features
 from lerobot.datasets.video_utils import VideoEncodingManager
-from lerobot.processor import (
-    RobotAction,
-    RobotObservation,
-    RobotProcessorPipeline,
-    make_default_processors,
-)
 from lerobot.robots import Robot, RobotConfig, make_robot_from_config
 from lerobot.teleoperators import Teleoperator, TeleoperatorConfig
 from lerobot.utils.constants import ACTION, OBS_STR
@@ -35,6 +36,13 @@ from lerobot.utils.utils import init_logging, log_say
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 
 from lerobot_teleoperator_pico4_hand import Pico4Hand, Pico4HandConfig
+from lerobot_teleoperator_pico4_hand._lerobot_compat import (
+    PROCESSOR_API_AVAILABLE,
+    RobotAction,
+    RobotObservation,
+    RobotProcessorPipeline,
+    make_default_processors,
+)
 
 from .teleoperate_pico4_hand import (
     _connect_devices,
@@ -86,6 +94,32 @@ def _disconnect_recording_devices(robot: Robot, teleop: Teleoperator | None) -> 
         robot.disconnect()
     if teleop is not None and teleop.is_connected:
         teleop.disconnect()
+
+
+def _build_dataset_features(
+    robot: Robot,
+    teleop_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction],
+    robot_observation_processor: RobotProcessorPipeline[RobotObservation, RobotObservation],
+    use_videos: bool,
+) -> dict[str, dict]:
+    if PROCESSOR_API_AVAILABLE and aggregate_pipeline_dataset_features and create_initial_features:
+        return combine_feature_dicts(
+            aggregate_pipeline_dataset_features(
+                pipeline=teleop_action_processor,
+                initial_features=create_initial_features(action=robot.action_features),
+                use_videos=use_videos,
+            ),
+            aggregate_pipeline_dataset_features(
+                pipeline=robot_observation_processor,
+                initial_features=create_initial_features(observation=robot.observation_features),
+                use_videos=use_videos,
+            ),
+        )
+
+    return combine_feature_dicts(
+        hw_to_dataset_features(robot.action_features, ACTION, use_videos),
+        hw_to_dataset_features(robot.observation_features, OBS_STR, use_videos),
+    )
 
 
 @safe_stop_image_writer
@@ -175,17 +209,11 @@ def record_pico4_hand(cfg: Pico4HandRecordConfig) -> LeRobotDataset:
     teleop = Pico4Hand(cfg.teleop)
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 
-    dataset_features = combine_feature_dicts(
-        aggregate_pipeline_dataset_features(
-            pipeline=teleop_action_processor,
-            initial_features=create_initial_features(action=robot.action_features),
-            use_videos=cfg.dataset.video,
-        ),
-        aggregate_pipeline_dataset_features(
-            pipeline=robot_observation_processor,
-            initial_features=create_initial_features(observation=robot.observation_features),
-            use_videos=cfg.dataset.video,
-        ),
+    dataset_features = _build_dataset_features(
+        robot=robot,
+        teleop_action_processor=teleop_action_processor,
+        robot_observation_processor=robot_observation_processor,
+        use_videos=cfg.dataset.video,
     )
 
     dataset = None

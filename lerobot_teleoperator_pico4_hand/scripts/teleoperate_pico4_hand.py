@@ -9,12 +9,6 @@ import numpy as np
 import rerun as rr
 
 from lerobot.configs import parser
-from lerobot.processor import (
-    RobotAction,
-    RobotObservation,
-    RobotProcessorPipeline,
-    make_default_processors,
-)
 from lerobot.robots import Robot, RobotConfig, make_robot_from_config
 from lerobot.teleoperators import Teleoperator, TeleoperatorConfig
 from lerobot.utils.robot_utils import precise_sleep
@@ -22,6 +16,12 @@ from lerobot.utils.utils import init_logging, move_cursor_up
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 
 from lerobot_teleoperator_pico4_hand import Pico4Hand, Pico4HandConfig
+from lerobot_teleoperator_pico4_hand._lerobot_compat import (
+    RobotAction,
+    RobotObservation,
+    RobotProcessorPipeline,
+    make_default_processors,
+)
 
 
 @dataclass
@@ -76,7 +76,7 @@ def _connect_devices(robot: Robot, teleop: Teleoperator) -> None:
             teleop.config.hand_only = True
         if getattr(teleop.config, "action_keys", None) is None and hasattr(robot.config, "action_keys"):
             teleop.config.action_keys = list(robot.config.action_keys)
-        teleop.connect(current_tcp_pose_quat=_initial_tcp_pose())
+        teleop.connect()
         logging.info("Connected Revo2 hand and Pico4 hand tracking.")
         return
 
