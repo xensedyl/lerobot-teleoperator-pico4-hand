@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
   "numpy",
-  "dex_retargeting @ git+ssh://git@github.com/xensedyl/dex-retargeting.git",
+  "dex_retargeting",
 ]
 
 [project.scripts]
