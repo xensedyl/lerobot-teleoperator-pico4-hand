@@ -109,6 +109,130 @@ lerobot-record-pico4-hand \
   --display_data=false
 ```
 
+## Franka Realtime Permissions
+
+If Pico4 hand tracking connects successfully but Franka initialization fails,
+the issue is usually Linux realtime scheduling permissions, not Pico4,
+retargeting, the FCI IP, or dexhand configuration.
+
+Typical log:
+
+```text
+Failed to connect: libfranka: unable to set realtime scheduling: Operation not permitted
+franky._franky.RealtimeException: libfranka: unable to set realtime scheduling: Operation not permitted
+```
+
+Grant realtime permissions to the Linux user that runs teleoperation. Replace
+`xense` with your actual username if needed.
+
+```bash
+sudo groupadd -f realtime
+sudo usermod -aG realtime xense
+```
+
+Create `/etc/security/limits.d/99-realtime.conf`:
+
+```bash
+sudo tee /etc/security/limits.d/99-realtime.conf > /dev/null <<'EOF'
+@realtime soft rtprio 99
+@realtime hard rtprio 99
+@realtime soft priority -20
+@realtime hard priority -20
+@realtime soft memlock unlimited
+@realtime hard memlock unlimited
+EOF
+```
+
+Make sure PAM loads limits:
+
+```bash
+grep -R "pam_limits.so" /etc/pam.d/common-session /etc/pam.d/common-session-noninteractive
+```
+
+If there is no output, add it:
+
+```bash
+echo "session required pam_limits.so" | sudo tee -a /etc/pam.d/common-session
+echo "session required pam_limits.so" | sudo tee -a /etc/pam.d/common-session-noninteractive
+```
+
+Reboot the computer so the group membership and limits are loaded:
+
+```bash
+sudo reboot
+```
+
+After reboot, verify:
+
+```bash
+id
+ulimit -r
+ulimit -l
+```
+
+Expected results:
+
+- `id` contains `realtime`
+- `ulimit -r` prints `99`
+- `ulimit -l` prints `unlimited`
+
+You can also test `SCHED_FIFO` directly:
+
+```bash
+python - <<'PY'
+import os
+
+try:
+    os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(80))
+    print("SCHED_FIFO OK")
+except Exception as e:
+    print("SCHED_FIFO FAILED:", repr(e))
+PY
+```
+
+If realtime limits are still not applied after reboot, add capabilities to the
+Python executable in the active conda environment:
+
+```bash
+sudo setcap cap_sys_nice,cap_ipc_lock=eip $(readlink -f /home/xense/miniforge3/envs/hand/bin/python)
+getcap $(readlink -f /home/xense/miniforge3/envs/hand/bin/python)
+```
+
+Using `sudo -E` to run teleoperation can confirm that the failure is permission
+related, but it is not recommended for normal use because it can create root
+owned cache, log, calibration, or config files inside the user workspace.
+
+## USB Serial Permissions
+
+If Revo2 or an FTDI-based USB serial device cannot be opened, configure udev
+permissions for the FTDI FT2232 device (`0403:6010`). This is the recommended
+persistent fix.
+
+```bash
+sudo tee /etc/udev/rules.d/99-ftdi-ft2232.rules >/dev/null <<'EOF'
+# FTDI FT2232C/D/H Dual UART/FIFO (0403:6010)
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0403", ATTR{idProduct}=="6010", MODE:="0666", GROUP="dialout"
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", MODE:="0666", GROUP="dialout", ENV{ID_MM_DEVICE_IGNORE}="1"
+EOF
+
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Unplug and replug the USB device after reloading the rules if the permissions do
+not update immediately.
+
+For a temporary test, you can directly relax permissions on the current
+`ttyUSB` nodes:
+
+```bash
+ls -l /dev/ttyUSB*
+sudo chmod 666 /dev/ttyUSB*
+```
+
+The `chmod` method is not persistent. It must be repeated after unplugging the
+device, rebooting, or if the device is assigned a new `/dev/ttyUSB*` path.
+
 ## Notes
 
 This package provides independent commands and the LeRobot plugin registration.
