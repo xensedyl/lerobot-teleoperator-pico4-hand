@@ -45,6 +45,7 @@ from lerobot_teleoperator_pico4_hand._lerobot_compat import (
 )
 
 from .teleoperate_pico4_hand import (
+    _current_tcp_pose_7d,
     _connect_devices,
     _filter_robot_action,
     _register_third_party_devices,
@@ -97,6 +98,19 @@ def _disconnect_recording_devices(robot: Robot, teleop: Teleoperator | None) -> 
         robot.disconnect()
     if teleop is not None and teleop.is_connected:
         teleop.disconnect()
+
+
+def _reset_robot_to_initial_position(robot: Robot, teleop: Teleoperator) -> None:
+    if not hasattr(robot, "reset_to_initial_position"):
+        logging.info("Robot has no reset_to_initial_position(); skipping reset before next episode.")
+        return
+
+    logging.info("Resetting robot to initial position before next episode.")
+    robot.reset_to_initial_position()
+
+    if hasattr(robot, "get_current_tcp_pose_quat") and hasattr(teleop, "reset_to_pose"):
+        teleop.reset_to_pose(_current_tcp_pose_7d(robot))
+        logging.info("Pico4 hand teleop synced to robot TCP pose after reset.")
 
 
 def _build_dataset_features(
@@ -305,6 +319,8 @@ def record_pico4_hand(cfg: Pico4HandRecordConfig) -> LeRobotDataset:
                         display_data=cfg.display_data,
                         display_compressed_images=display_compressed_images,
                     )
+                    if not events["stop_recording"] and not events["rerecord_episode"]:
+                        _reset_robot_to_initial_position(robot, teleop)
 
                 if events["rerecord_episode"]:
                     log_say("Re-record episode", cfg.play_sounds)
