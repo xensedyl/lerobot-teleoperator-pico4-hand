@@ -68,7 +68,10 @@ class Pico4HandDatasetRecordConfig:
     num_image_writer_processes: int = 0
     num_image_writer_threads_per_camera: int = 4
     video_encoding_batch_size: int = 1
-    vcodec: str = "libsvtav1"
+    vcodec: str = "auto"
+    streaming_encoding: bool = True
+    encoder_queue_maxsize: int = 30
+    encoder_threads: int | None = None
     rename_map: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -225,6 +228,9 @@ def record_pico4_hand(cfg: Pico4HandRecordConfig) -> LeRobotDataset:
                 root=cfg.dataset.root,
                 batch_encoding_size=cfg.dataset.video_encoding_batch_size,
                 vcodec=cfg.dataset.vcodec,
+                streaming_encoding=cfg.dataset.streaming_encoding,
+                encoder_queue_maxsize=cfg.dataset.encoder_queue_maxsize,
+                encoder_threads=cfg.dataset.encoder_threads,
             )
             if hasattr(robot, "cameras") and len(robot.cameras) > 0:
                 dataset.start_image_writer(
@@ -235,7 +241,7 @@ def record_pico4_hand(cfg: Pico4HandRecordConfig) -> LeRobotDataset:
                 dataset, robot, cfg.dataset.fps, dataset_features
             )
         else:
-            sanity_check_dataset_name(cfg.dataset.repo_id, None)
+            sanity_check_dataset_name(cfg.dataset.repo_id)
             dataset = LeRobotDataset.create(
                 cfg.dataset.repo_id,
                 cfg.dataset.fps,
@@ -247,14 +253,26 @@ def record_pico4_hand(cfg: Pico4HandRecordConfig) -> LeRobotDataset:
                 image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
                 batch_encoding_size=cfg.dataset.video_encoding_batch_size,
                 vcodec=cfg.dataset.vcodec,
+                streaming_encoding=cfg.dataset.streaming_encoding,
+                encoder_queue_maxsize=cfg.dataset.encoder_queue_maxsize,
+                encoder_threads=cfg.dataset.encoder_threads,
             )
 
         _connect_devices(robot, teleop)
         listener, events = init_keyboard_listener()
 
+        if not cfg.dataset.streaming_encoding:
+            logging.info(
+                "Streaming encoding is disabled. Enable it with "
+                "--dataset.streaming_encoding=true --dataset.vcodec=auto."
+            )
+
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
             while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
+                if dataset is not None:
+                    dataset.prepare_episode_recording()
+
                 log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
                 record_loop(
                     robot=robot,
