@@ -109,6 +109,36 @@ lerobot-record-pico4-hand \
   --display_data=false
 ```
 
+To encode frames into video on the fly while recording (lower disk usage and no separate encoding step afterwards), enable streaming encoding:
+
+  --dataset.streaming_encoding=true \
+  --dataset.vcodec=auto \
+
+```bash
+lerobot-record-pico4-hand \
+  --robot.type=franka_research3_dexhand \
+  --robot.fci_ip=192.168.99.111 \
+  --robot.control_mode=cartesian_impedance \
+  --robot.use_gripper=false \
+  --robot.dexhand_hand_type=left \
+  --robot.dexhand_auto_detect_quick=true \
+  --teleop.type=pico4_hand \
+  --teleop.hand_type=left \
+  --teleop.robot_name=revo2 \
+  --teleop.retargeting_type=vector \
+  --dataset.repo_id=${HF_USER}/franka-revo2-pico4-hand-demo \
+  --dataset.single_task="Teleoperate Franka Revo2 with Pico4 hand tracking" \
+  --dataset.num_episodes=1 \
+  --dataset.fps=30 \
+  --dataset.episode_time_s=600 \
+  --dataset.reset_time_s=120 \
+  --dataset.streaming_encoding=true \
+  --dataset.vcodec=auto \
+  --resume=false \
+  --dataset.push_to_hub=false \
+  --display_data=false
+```
+
 ## Franka Realtime Permissions
 
 If Pico4 hand tracking connects successfully but Franka initialization fails,

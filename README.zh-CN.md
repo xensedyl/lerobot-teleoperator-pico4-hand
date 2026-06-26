@@ -104,6 +104,36 @@ lerobot-record-pico4-hand \
   --display_data=false
 ```
 
+如需在采集过程中实时将图像帧编码为视频（降低磁盘占用，且采集结束后无需再单独执行一次编码），可开启流式编码：
+
+  --dataset.streaming_encoding=true \
+  --dataset.vcodec=auto \
+  
+```bash
+lerobot-record-pico4-hand \
+  --robot.type=franka_research3_dexhand \
+  --robot.fci_ip=192.168.99.111 \
+  --robot.control_mode=cartesian_impedance \
+  --robot.use_gripper=false \
+  --robot.dexhand_hand_type=left \
+  --robot.dexhand_auto_detect_quick=true \
+  --teleop.type=pico4_hand \
+  --teleop.hand_type=left \
+  --teleop.robot_name=revo2 \
+  --teleop.retargeting_type=vector \
+  --dataset.repo_id=${HF_USER}/franka-revo2-pico4-hand-demo \
+  --dataset.single_task="Teleoperate Franka Revo2 with Pico4 hand tracking" \
+  --dataset.num_episodes=1 \
+  --dataset.fps=30 \
+  --dataset.episode_time_s=600 \
+  --dataset.reset_time_s=120 \
+  --dataset.streaming_encoding=true \
+  --dataset.vcodec=auto \
+  --resume=false \
+  --dataset.push_to_hub=false \
+  --display_data=false
+```
+
 ## Franka 实时权限配置
 
 如果 Pico4 和 dex-retargeting 已经正常连接，但 Franka 初始化失败，日志中出现：
